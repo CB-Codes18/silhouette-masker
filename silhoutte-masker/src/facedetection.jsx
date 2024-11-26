@@ -1,95 +1,109 @@
 // Posedetection.js
-import React,{useEffect, useRef ,useState} from "react";
-import * as tf from '@tensorflow/tfjs';
-import { createDetector, SupportedModels } from "@tensorflow-models/pose-detection";
+import React, { useEffect, useRef, useState } from 'react';
 
-const Posedetection = () => {
-    const videoRef = useRef(null);
-    const canvasRef = useRef(null);
-    const [message, setMessage] = useState('');
-    const [detector, setDetector] = useState(null);
+const FaceDetection = () => {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [message, setMessage] = useState('');
+  const silhouetteImage = new Image();
+  silhouetteImage.src = 'silhouette.png'; // Make sure this path is correct
 
+  useEffect(() => {
+    const loadModels = async () => {
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+        faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+        faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+        faceapi.nets.faceExpressionNet.loadFromUri('/models'),
+      ]);
+      startVideo();
+    };
 
-    useEffect (() => {
-        const loadModel = async () => {
-            const model = await createDetector(SupportedModels.MoveNet);
-            setDetector (model);
-            startVideo();
-        };
+    const startVideo = () => {
+      navigator.mediaDevices
+        .getUserMedia({ video: {} })
+        .then((stream) => {
+          videoRef.current.srcObject = stream;
+        })
+        .catch((err) => console.error(err));
+    };
 
-        const startVideo = () => {
-            navigator.mediaDevices.getUserMedia({video : true})
-            .then(stream => {
-                videoRef.current.srcObject = stream;
-            })
-            .catch(err => console.error(err));
-        };
+    loadModels();
+  }, []);
 
-        loadModel();
-    }, []);
-    useEffect(() => {
-        const handleVideoPlay = async () => {
-          const canvas = canvasRef.current;
-          const ctx = canvas.getContext('2d');
+  useEffect(() => {
+    const handleVideoPlay = async () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const displaySize = {
+        width: videoRef.current.videoWidth,
+        height: videoRef.current.videoHeight,
+      };
+      faceapi.matchDimensions(canvas, displaySize);
 
-          const detectPose = async () => {
-            if (detector) {
-                const poses = await detector.estimatePoses(videoRef.current);
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Fixed position and size for the silhouette
+      const silhouetteWidth = 200; // Adjust as needed
+      const silhouetteHeight = 200; // Adjust as needed
+      const silhouetteX = (displaySize.width - silhouetteWidth) / 2;
+      const silhouetteY = (displaySize.height - silhouetteHeight) / 2;
 
-          if (poses.length > 0) {
-            const keypoints = poses[0].keypoints;
-            const nose = keypoints[0]; // Using the nose keypoint for distance estimation
+      setInterval(async () => {
+        const detections = await faceapi
+          .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceExpressions();
 
-            if (nose.score > 0.5) {
-                const width = videoRef.current.videoWidth;
-              const height = videoRef.current.videoHeight;
-              const noseX = nose.x * width;
-              const noseY = nose.y * height;
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
-              // Define thresholds for too close and too far
-              const tooCloseThreshold = 100; // Adjust this value as needed
-              const tooFarThreshold = 300; // Adjust this value as needed
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-              // Calculate distance based on nose position
-              if (noseY < tooCloseThreshold) {
-                setMessage('Move Backward');
-              } else if (noseY > height - tooFarThreshold) {
-                setMessage('Move Forward');
-              } else {
-                setMessage('');
-              }
+        // Draw the silhouette image at a fixed position
+        ctx.drawImage(silhouetteImage, silhouetteX, silhouetteY, silhouetteWidth, silhouetteHeight);
 
-              // Draw Keypoints
-              ctx.fillStyle = 'red';
-              ctx.beginPath();
-              ctx.arc(noseX, noseY, 5, 0, 2 * Math.PI);
-              ctx.fill();
-            }
+        if (resizedDetections.length > 0) {
+          const { width } = resizedDetections[0].detection.box;
+          const tooCloseThreshold = 100; // Adjust as needed
+          const tooFarThreshold = 300; // Adjust as needed
+
+          if (width < tooCloseThreshold) {
+            setMessage('Move Backward');
+          } else if (width > tooFarThreshold) {
+            setMessage('Move Forward');
+          } else {
+            setMessage('');
           }
         }
-        tAnimationFrame(detectPose);
-      };
 
-      detectPose();
+        // Optional: Draw face detections for debugging purposes
+        faceapi.draw.drawDetections(canvas, resizedDetections);
+      }, 100);
     };
 
     videoRef.current.addEventListener('play', handleVideoPlay);
     return () => {
       videoRef.current.removeEventListener('play', handleVideoPlay);
     };
-  }, [detector]);
+  }, [videoRef]);
+
   return (
-    <div>
-      <video ref={videoRef} autoPlay style={{ display: 'none' }} />
-      <canvas ref={canvasRef} />
-      <div style={{ position: 'absolute', color: 'white', fontSize: '24px', textAlign: 'center' }}>
+    <div style={{ position: 'relative' }}>
+      <video ref={videoRef} autoPlay muted style={{ display: 'none' }} />
+      <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0 }} />
+      <div
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: 'white',
+          fontSize: '24px',
+          textAlign: 'center',
+        }}
+      >
         {message}
       </div>
     </div>
   );
-
 };
 
-export default facedetection.js;
-  
+export default FaceDetection;
